@@ -3,6 +3,7 @@
 #include <base/scope_guard.h>
 
 #include <IO/ReadBufferFromPocoSocket.h>
+#include "Common/logger_useful.h"
 #include <Common/Exception.h>
 #include <Common/NetException.h>
 #include <Common/Stopwatch.h>
@@ -62,7 +63,14 @@ bool ReadBufferFromPocoSocket::nextImpl()
             SCOPE_EXIT(socket.setBlocking(true));
             bool secure = socket.secure();
             bytes_read = socket.impl()->receiveBytes(internal_buffer.begin(), static_cast<int>(internal_buffer.size()));
-
+            Poco::Net::SocketAddress self_address = socket.impl()->address();
+            Poco::Net::SocketAddress peer_addresss1 = socket.impl()->peerAddress();
+            // LOG_INFO(&Poco::Logger::get("ReadBufferFromPocoSocket"), "Reading from socket (peer1: {}, local: {}, peer_native: {})", peer_addresss1.toString(), self_address.toString(), peer_address.toString());
+            // if (bytes_read > 0)
+            // {
+            //     std::string first_bytes(internal_buffer.begin(), internal_buffer.begin() + std::min<size_t>(10, bytes_read));
+            //     LOG_INFO(&Poco::Logger::get("ReadBufferFromPocoSocket"), "First 10 bytes: {}", first_bytes);
+            // }
             /// Check EAGAIN and ERR_SSL_WANT_READ/ERR_SSL_WANT_WRITE for secure socket (reading from secure socket can write too).
             while (bytes_read < 0 && (errno == EAGAIN || (secure && (checkSSLWantRead(bytes_read) || checkSSLWantWrite(bytes_read)))))
             {
@@ -133,6 +141,8 @@ bool ReadBufferFromPocoSocket::poll(size_t timeout_microseconds) const
     Stopwatch watch;
     bool res = socket.poll(timeout_microseconds, Poco::Net::Socket::SELECT_READ | Poco::Net::Socket::SELECT_ERROR);
     ProfileEvents::increment(ProfileEvents::NetworkReceiveElapsedMicroseconds, watch.elapsedMicroseconds());
+    // log all peer addresses
+    // LOG_INFO(&Poco::Logger::get("ReadBufferFromPocoSocket"), "Polling socket {} for {}us, result: {}", peer_address.toString(), timeout_microseconds, res);
     return res;
 }
 

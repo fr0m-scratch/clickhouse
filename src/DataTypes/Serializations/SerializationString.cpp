@@ -1,3 +1,4 @@
+#include <sdt.h>
 #include <DataTypes/Serializations/SerializationString.h>
 
 #include <Columns/ColumnString.h>
@@ -151,6 +152,7 @@ template <int UNROLL_TIMES>
 static NO_INLINE void deserializeBinarySSE2(ColumnString::Chars & data, ColumnString::Offsets & offsets, ReadBuffer & istr, size_t limit)
 {
     size_t offset = data.size();
+    DTRACE_PROBE2(clickhouse, deserializeBinarySSE2, offset, limit);
     /// Avoiding calling resize in a loop improves the performance.
     data.resize(std::max(data.capacity(), static_cast<size_t>(4096)));
 
@@ -208,6 +210,7 @@ static NO_INLINE void deserializeBinarySSE2(ColumnString::Chars & data, ColumnSt
     }
 
     data.resize_exact(offset);
+    DTRACE_PROBE1(clickhouse, deserializeBinarySSE2_done, data.size());
 }
 
 

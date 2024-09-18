@@ -1,7 +1,7 @@
 #include <cassert>
 
 #include "CompressedReadBufferFromFile.h"
-
+#include <sdt.h>
 #include <Compression/LZ4_decompress_faster.h>
 #include <IO/WriteHelpers.h>
 #include <Disks/IO/createReadBufferFromFileBase.h>
@@ -90,6 +90,7 @@ void CompressedReadBufferFromFile::seek(size_t offset_in_compressed_file, size_t
 size_t CompressedReadBufferFromFile::readBig(char * to, size_t n)
 {
     size_t bytes_read = 0;
+    DTRACE_PROBE1(clickhouse, readBigBegin, n);
     /// The codec mode is only relevant for codecs which support hardware offloading.
     ICompressionCodec::CodecMode decompress_mode = ICompressionCodec::CodecMode::Synchronous;
     bool read_tail = false;
@@ -99,8 +100,10 @@ size_t CompressedReadBufferFromFile::readBig(char * to, size_t n)
         bytes_read += read(to, std::min(static_cast<size_t>(working_buffer.end() - pos), n));
 
     /// If you need to read more - we will, if possible, decompress at once to `to`.
+    int iter = 0;
     while (bytes_read < n)
     {
+        iter++;
         size_t size_decompressed = 0;
         size_t size_compressed_without_checksum = 0;
 
@@ -178,7 +181,7 @@ size_t CompressedReadBufferFromFile::readBig(char * to, size_t n)
 
     /// Here we must make sure all asynchronous requests above are completely done.
     flushAsynchronousDecompressRequests();
-
+    
     if (read_tail)
     {
         /// Manually take nextimpl_working_buffer_offset into account, because we don't use
@@ -186,6 +189,7 @@ size_t CompressedReadBufferFromFile::readBig(char * to, size_t n)
         pos = working_buffer.begin();
         bytes_read += read(to + bytes_read, n - bytes_read);
     }
+    DTRACE_PROBE2(clickhouse, readBigEnd, iter, n);
 
     return bytes_read;
 }

@@ -66,9 +66,9 @@ class PageCache;
 struct ReadSettings
 {
     /// Method to use reading from local filesystem.
-    LocalFSReadMethod local_fs_method = LocalFSReadMethod::pread;
+    LocalFSReadMethod local_fs_method = LocalFSReadMethod::pread; 
     /// Method to use reading from remote filesystem.
-    RemoteFSReadMethod remote_fs_method = RemoteFSReadMethod::threadpool;
+    RemoteFSReadMethod remote_fs_method = RemoteFSReadMethod::threadpool; 
 
     /// https://eklitzke.org/efficient-file-copying-on-linux
     size_t local_fs_buffer_size = 128 * 1024;

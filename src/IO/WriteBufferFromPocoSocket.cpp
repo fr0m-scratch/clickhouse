@@ -4,6 +4,7 @@
 
 #include <IO/WriteBufferFromPocoSocket.h>
 
+#include "Common/logger_useful.h"
 #include <Common/Exception.h>
 #include <Common/NetException.h>
 #include <Common/Stopwatch.h>
@@ -43,6 +44,9 @@ ssize_t WriteBufferFromPocoSocket::socketSendBytesImpl(const char * ptr, size_t 
     /// run async_callback and try again later.
     /// It is expected that file descriptor may be polled externally.
     /// Note that send timeout is not checked here. External code should check it while polling.
+    Poco::Net::SocketAddress self_address = socket.impl()->address();
+    Poco::Net::SocketAddress peer_addresss1 = socket.impl()->peerAddress();
+    LOG_INFO(&Poco::Logger::get("WriteBufferFromPocoSocket"), "Writing to socket (peer1: {}, local: {}, peer_native: {})", peer_addresss1.toString(), self_address.toString(), peer_address.toString());
     if (async_callback)
     {
         socket.setBlocking(false);
@@ -50,7 +54,6 @@ ssize_t WriteBufferFromPocoSocket::socketSendBytesImpl(const char * ptr, size_t 
         SCOPE_EXIT(socket.setBlocking(true));
         bool secure = socket.secure();
         res = socket.impl()->sendBytes(ptr, static_cast<int>(size));
-
         /// Check EAGAIN and ERR_SSL_WANT_WRITE/ERR_SSL_WANT_READ for secure socket (writing to secure socket can read too).
         while (res < 0 && (errno == EAGAIN || (secure && (checkSSLWantRead(res) || checkSSLWantWrite(res)))))
         {

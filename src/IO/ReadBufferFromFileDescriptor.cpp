@@ -1,6 +1,7 @@
 #include <cerrno>
 #include <ctime>
 #include <optional>
+#include <sdt.h>
 #include <Common/ProfileEvents.h>
 #include <Common/Stopwatch.h>
 #include <Common/Exception.h>
@@ -58,21 +59,32 @@ size_t ReadBufferFromFileDescriptor::readImpl(char * to, size_t min_bytes, size_
          return 0;
 
     size_t bytes_read = 0;
+    DTRACE_PROBE2(clickhouse, readImplS, fd, to);
+    int iter = 0;
     while (bytes_read < min_bytes)
     {
         ProfileEvents::increment(ProfileEvents::ReadBufferFromFileDescriptorRead);
 
         Stopwatch watch(profile_callback ? clock_type : CLOCK_MONOTONIC);
-
+        iter++;
+        
         ssize_t res = 0;
         size_t to_read = max_bytes - bytes_read;
         {
             CurrentMetrics::Increment metric_increment{CurrentMetrics::Read};
 
-            if (use_pread)
-                res = ::pread(fd, to + bytes_read, to_read, offset + bytes_read);
-            else
+            if (use_pread) {
+                bool bpf_override = false;
+                DTRACE_PROBE5(clickhouse, preadRaw, fd, offset + bytes_read, &res, &bpf_override, to_read);
+                overrideTrace("N2DB28ReadBufferFromFileDescriptorE", to_read, to + bytes_read, nullptr, offset + bytes_read, &bpf_override, "preadRaw", &res);
+                if (!bpf_override) {
+                    res = ::pread(fd, to + bytes_read, to_read, offset + bytes_read);
+                }
+            }
+            else {
+                DTRACE_PROBE2(clickhouse, readRaw, offset + bytes_read, to_read);
                 res = ::read(fd, to + bytes_read, to_read);
+            }
         }
         if (!res)
             break;
@@ -108,7 +120,7 @@ size_t ReadBufferFromFileDescriptor::readImpl(char * to, size_t min_bytes, size_
             profile_callback(info);
         }
     }
-
+    DTRACE_PROBE2(clickhouse, readImplE, iter, max_bytes);
     if (bytes_read)
         ProfileEvents::increment(ProfileEvents::ReadBufferFromFileDescriptorReadBytes, bytes_read);
 
@@ -120,13 +132,14 @@ bool ReadBufferFromFileDescriptor::nextImpl()
 {
     /// If internal_buffer size is empty, then read() cannot be distinguished from EOF
     assert(!internal_buffer.empty());
-
+    
     size_t bytes_read = readImpl(internal_buffer.begin(), 1, internal_buffer.size(), file_offset_of_buffer_end);
 
     file_offset_of_buffer_end += bytes_read;
 
     if (bytes_read)
-    {
+    {   
+        if (bpf_override) return true;
         working_buffer = internal_buffer;
         working_buffer.resize(bytes_read);
     }

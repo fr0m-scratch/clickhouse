@@ -1,26 +1,28 @@
-#include <Storages/MergeTree/MergeTreeSelectProcessor.h>
-#include <Storages/MergeTree/MergeTreeRangeReader.h>
+#include <city.h>
+#include <sdt.h>
+#include <Columns/FilterDescription.h>
+#include <DataTypes/DataTypeArray.h>
+#include <DataTypes/DataTypeUUID.h>
+#include <Processors/Chunk.h>
+#include <Processors/Merges/Algorithms/MergeTreePartLevelInfo.h>
+#include <Processors/QueryPlan/SourceStepWithFilter.h>
+#include <Processors/Transforms/AggregatingTransform.h>
 #include <Storages/MergeTree/IMergeTreeDataPart.h>
 #include <Storages/MergeTree/MergeTreeBlockReadUtils.h>
-#include <Columns/FilterDescription.h>
+#include <Storages/MergeTree/MergeTreeRangeReader.h>
+#include <Storages/MergeTree/MergeTreeSelectProcessor.h>
+#include <Storages/MergeTree/MergeTreeVirtualColumns.h>
 #include <Common/ElapsedTimeProfileEventIncrement.h>
 #include <Common/logger_useful.h>
 #include <Common/typeid_cast.h>
-#include <Processors/Merges/Algorithms/MergeTreePartLevelInfo.h>
-#include <DataTypes/DataTypeUUID.h>
-#include <DataTypes/DataTypeArray.h>
-#include <Processors/Chunk.h>
-#include <Processors/QueryPlan/SourceStepWithFilter.h>
-#include <Processors/Transforms/AggregatingTransform.h>
-#include <Storages/MergeTree/MergeTreeVirtualColumns.h>
-#include <city.h>
+
 
 namespace DB
 {
 
 namespace ErrorCodes
 {
-    extern const int QUERY_WAS_CANCELLED;
+extern const int QUERY_WAS_CANCELLED;
 }
 
 MergeTreeSelectProcessor::MergeTreeSelectProcessor(
@@ -41,8 +43,7 @@ MergeTreeSelectProcessor::MergeTreeSelectProcessor(
 {
     if (reader_settings.apply_deleted_mask)
     {
-        PrewhereExprStep step
-        {
+        PrewhereExprStep step{
             .type = PrewhereExprStep::Filter,
             .actions = nullptr,
             .filter_column_name = RowExistsColumn::name,
@@ -58,8 +59,10 @@ MergeTreeSelectProcessor::MergeTreeSelectProcessor(
         LOG_TRACE(log, "PREWHERE condition was split into {} steps: {}", prewhere_actions.steps.size(), prewhere_actions.dumpConditions());
 
     if (prewhere_info)
-        LOG_TEST(log, "Original PREWHERE DAG:\n{}\nPREWHERE actions:\n{}",
-            (prewhere_info->prewhere_actions ? prewhere_info->prewhere_actions->dumpDAG(): std::string("<nullptr>")),
+        LOG_TEST(
+            log,
+            "Original PREWHERE DAG:\n{}\nPREWHERE actions:\n{}",
+            (prewhere_info->prewhere_actions ? prewhere_info->prewhere_actions->dumpDAG() : std::string("<nullptr>")),
             (!prewhere_actions.steps.empty() ? prewhere_actions.dump() : std::string("<nullptr>")));
 }
 
@@ -70,15 +73,15 @@ String MergeTreeSelectProcessor::getName() const
 
 bool tryBuildPrewhereSteps(PrewhereInfoPtr prewhere_info, const ExpressionActionsSettings & actions_settings, PrewhereExprInfo & prewhere);
 
-PrewhereExprInfo MergeTreeSelectProcessor::getPrewhereActions(PrewhereInfoPtr prewhere_info, const ExpressionActionsSettings & actions_settings, bool enable_multiple_prewhere_read_steps)
+PrewhereExprInfo MergeTreeSelectProcessor::getPrewhereActions(
+    PrewhereInfoPtr prewhere_info, const ExpressionActionsSettings & actions_settings, bool enable_multiple_prewhere_read_steps)
 {
     PrewhereExprInfo prewhere_actions;
     if (prewhere_info)
     {
         if (prewhere_info->row_level_filter)
         {
-            PrewhereExprStep row_level_filter_step
-            {
+            PrewhereExprStep row_level_filter_step{
                 .type = PrewhereExprStep::Filter,
                 .actions = std::make_shared<ExpressionActions>(prewhere_info->row_level_filter, actions_settings),
                 .filter_column_name = prewhere_info->row_level_column_name,
@@ -90,11 +93,9 @@ PrewhereExprInfo MergeTreeSelectProcessor::getPrewhereActions(PrewhereInfoPtr pr
             prewhere_actions.steps.emplace_back(std::make_shared<PrewhereExprStep>(std::move(row_level_filter_step)));
         }
 
-        if (!enable_multiple_prewhere_read_steps ||
-            !tryBuildPrewhereSteps(prewhere_info, actions_settings, prewhere_actions))
+        if (!enable_multiple_prewhere_read_steps || !tryBuildPrewhereSteps(prewhere_info, actions_settings, prewhere_actions))
         {
-            PrewhereExprStep prewhere_step
-            {
+            PrewhereExprStep prewhere_step{
                 .type = PrewhereExprStep::Filter,
                 .actions = std::make_shared<ExpressionActions>(prewhere_info->prewhere_actions, actions_settings),
                 .filter_column_name = prewhere_info->prewhere_column_name,
@@ -131,9 +132,15 @@ ChunkAndProgress MergeTreeSelectProcessor::read()
 
         if (!task->getMainRangeReader().isInitialized())
             initializeRangeReaders();
-
+        bool override_orig = false;
+        DTRACE_PROBE2(clickhouse, before_read_from_task, &task, &override_orig);
         auto res = algorithm->readFromTask(*task, block_size_params);
 
+        // LOG_INFO(log, "readFromTask: num_read_rows: {}, num_read_bytes: {}", res.num_read_rows, res.num_read_bytes);
+//    if (override_orig == true)
+//         {
+//             LOG_INFO(log, "override_orig is true");
+//         }     
         if (res.row_count)
         {
             /// Reorder the columns according to result_header
@@ -150,10 +157,7 @@ ChunkAndProgress MergeTreeSelectProcessor::read()
                 chunk.getChunkInfos().add(std::make_shared<MergeTreePartLevelInfo>(task->getInfo().data_part->info.level));
 
             return ChunkAndProgress{
-                .chunk = std::move(chunk),
-                .num_read_rows = res.num_read_rows,
-                .num_read_bytes = res.num_read_bytes,
-                .is_finished = false};
+                .chunk = std::move(chunk), .num_read_rows = res.num_read_rows, .num_read_bytes = res.num_read_bytes, .is_finished = false};
         }
         else
         {

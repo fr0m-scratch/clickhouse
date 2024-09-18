@@ -4,8 +4,10 @@
 #include <cstring>
 #include <cassert>
 #include <city.h>
+#include <sdt.h>
 #include <Common/ProfileEvents.h>
 #include <Common/Exception.h>
+#include "Disks/IStoragePolicy.h"
 #include <base/hex.h>
 #include <Compression/ICompressionCodec.h>
 #include <Compression/CompressionFactory.h>
@@ -160,12 +162,21 @@ static void readHeaderAndGetCodecAndSize(
 /// Returns number of compressed bytes read.
 size_t CompressedReadBufferBase::readCompressedData(size_t & size_decompressed, size_t & size_compressed_without_checksum, bool always_copy)
 {
+    DTRACE_PROBE2(clickhouse, read_compressed_data, size_decompressed, size_compressed_without_checksum);
     if (compressed_in->eof())
         return 0;
 
     UInt8 header_size = ICompressionCodec::getHeaderSize();
     own_compressed_buffer.resize(header_size + sizeof(Checksum));
 
+    // compressed_in is a ReadBuffer which is a parent class
+    // but we want to know the actual class of the compressed_in object
+    // and out put with DTRACE_PROBE2
+
+    String compressed_in_class = typeid(*compressed_in).name();
+    DTRACE_PROBE1(clickhouse, compressed_in_class, compressed_in_class.c_str());
+
+    
     compressed_in->readStrict(own_compressed_buffer.data(), sizeof(Checksum) + header_size);
 
     readHeaderAndGetCodecAndSize(
@@ -206,6 +217,7 @@ size_t CompressedReadBufferBase::readCompressedData(size_t & size_decompressed, 
     }
 
     ProfileEvents::increment(ProfileEvents::ReadCompressedBytes, size_compressed_without_checksum + sizeof(Checksum));
+    DTRACE_PROBE2(clickhouse, read_compressed_data_end, size_decompressed, size_compressed_without_checksum);
     return size_compressed_without_checksum + sizeof(Checksum);
 }
 

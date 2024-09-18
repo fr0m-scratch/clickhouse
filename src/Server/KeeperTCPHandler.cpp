@@ -455,6 +455,9 @@ void KeeperTCPHandler::runImpl()
                 }
                 else if (received_op == Coordination::OpNum::Heartbeat)
                 {
+                    Poco::Net::SocketAddress self_address = socket().impl()->address();
+                    Poco::Net::SocketAddress peer_address = socket().impl()->peerAddress();
+                    LOG_INFO(log, "Received heartbeat from {} at {} for session #{}", peer_address.toString(), self_address.toString(), session_id);
                     LOG_TRACE(log, "Received heartbeat for session #{}", session_id);
                 }
                 else

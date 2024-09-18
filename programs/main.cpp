@@ -21,6 +21,7 @@
 
 #include <base/phdr_cache.h>
 #include <base/coverage.h>
+#include <sdt.h>
 
 
 /// Universal executable for various clickhouse applications
@@ -152,30 +153,30 @@ bool isClickhouseApp(std::string_view app_suffix, std::vector<char *> & argv)
 /// 3rd-party uncontrolled dangerous libraries into the process address space,
 /// because it is insane.
 
-#if !defined(USE_MUSL)
-extern "C"
-{
-    void * dlopen(const char *, int)
-    {
-        return nullptr;
-    }
+// #if !defined(USE_MUSL)
+// extern "C"
+// {
+//     void * dlopen(const char *, int)
+//     {
+//         return nullptr;
+//     }
 
-    void * dlmopen(long, const char *, int) // NOLINT
-    {
-        return nullptr;
-    }
+//     void * dlmopen(long, const char *, int) // NOLINT
+//     {
+//         return nullptr;
+//     }
 
-    int dlclose(void *)
-    {
-        return 0;
-    }
+//     int dlclose(void *)
+//     {
+//         return 0;
+//     }
 
-    const char * dlerror()
-    {
-        return "ClickHouse does not allow dynamic library loading";
-    }
-}
-#endif
+//     const char * dlerror()
+//     {
+//         return "ClickHouse does not allow dynamic library loading";
+//     }
+// }
+// #endif
 
 /// Prevent messages from JeMalloc in the release build.
 /// Some of these messages are non-actionable for the users, such as:
@@ -244,7 +245,7 @@ int main(int argc_, char ** argv_)
     {
         main_func = mainEntryClickHouseLocal;
     }
-
+    DTRACE_PROBE(clickhouse, main_entry);
     int exit_code = main_func(static_cast<int>(argv.size()), argv.data());
 
 #if defined(SANITIZE_COVERAGE)

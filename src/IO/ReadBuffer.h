@@ -4,11 +4,15 @@
 #include <cstring>
 #include <algorithm>
 #include <memory>
-
+#include <sdt.h>
+#include "Common/logger_useful.h"
 #include <Common/Exception.h>
 #include <Common/Priority.h>
+#include "base/Decimal.h"
+#include "base/types.h"
 #include <IO/BufferBase.h>
 #include <IO/AsynchronousReader.h>
+#include <sys/types.h>
 
 
 namespace DB
@@ -179,15 +183,30 @@ public:
     [[nodiscard]] size_t read(char * to, size_t n)
     {
         size_t bytes_copied = 0;
-
+        String self_type = typeid(*this).name();
+        // LOG_INFO(&Poco::Logger::get("ReadBuffer"), "Reading from buffer: {}", self_type);
+        DTRACE_PROBE5(clickhouse, readS, self_type.c_str(), n, to, &bpf_override, &bytes_copied);
+        overrideTrace(self_type, n, to, &bytes_copied, 0, &bpf_override, "readS");
+        auto start = std::chrono::high_resolution_clock::now();
+        
         while (bytes_copied < n && !eof())
-        {
+        {   
+            if (bpf_override)
+                //bytes_copied will be updated in bpf program
+                break;
             size_t bytes_to_copy = std::min(static_cast<size_t>(working_buffer.end() - pos), n - bytes_copied);
             ::memcpy(to + bytes_copied, pos, bytes_to_copy);
             pos += bytes_to_copy;
             bytes_copied += bytes_to_copy;
         }
-
+        DTRACE_PROBE1(clickhouse, batchSubmit, &bytes_copied);
+        overrideTrace(self_type, n, to, &bytes_copied, 0, &bpf_override, "batchSubmit");
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::microseconds::rep duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+        UInt64 latency = static_cast<UInt64>(duration);
+        DTRACE_PROBE1(clickhouse, readCount, latency);
+        // log latency
+        // LOG_INFO(&Poco::Logger::get("ReadBuffer"), "Read {} bytes from buffer in {}us", bytes_copied, latency);
         return bytes_copied;
     }
 
@@ -198,6 +217,7 @@ public:
         if (n != read_bytes)
             throw Exception(ErrorCodes::CANNOT_READ_ALL_DATA,
                             "Cannot read all data. Bytes read: {}. Bytes expected: {}.", read_bytes, std::to_string(n));
+        DTRACE_PROBE2(clickhouse, after_read_strict, &to, &n);
     }
 
     /** A method that can be more efficiently implemented in derived classes, in the case of reading large enough blocks.
@@ -253,6 +273,11 @@ protected:
     /// buffer. Apparently this is an additional out-parameter for nextImpl(),
     /// not a real field.
     size_t nextimpl_working_buffer_offset = 0;
+    bool bpf_override = false;
+    [[gnu::noinline]] bool overrideTrace(String self_type, size_t n, char * to,  size_t * bytes_copied, size_t offset, bool * override, String funcName, ssize_t * res = nullptr) const {
+        DTRACE_PROBE8(clickhouse, null, self_type.c_str(), n, to, bytes_copied, offset, override, funcName, res);
+        return false;   
+    }
 
 private:
     /** Read the next data and fill a buffer with it.

@@ -206,6 +206,7 @@ void ReplicatedMergeTreeAttachThread::finalizeInitialization() TSA_NO_THREAD_SAF
     storage.startupImpl(/* from_attach_thread */ true);
     storage.initialization_done = true;
     LOG_INFO(log, "Table is initialized");
+    
 }
 
 void ReplicatedMergeTreeAttachThread::setSkipSanityChecks(bool skip_sanity_checks_)

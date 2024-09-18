@@ -1147,45 +1147,45 @@ try
         executable_path = "/usr/bin/clickhouse";    /// It is used for information messages.
 
     /// After full config loaded
-    {
-        if (config().getBool("remap_executable", false))
-        {
-            LOG_DEBUG(log, "Will remap executable in memory.");
-            size_t size = remapExecutable();
-            LOG_DEBUG(log, "The code ({}) in memory has been successfully remapped.", ReadableSize(size));
-        }
+    // {
+    //     if (config().getBool("remap_executable", false))
+    //     {
+    //         LOG_DEBUG(log, "Will remap executable in memory.");
+    //         size_t size = remapExecutable();
+    //         LOG_DEBUG(log, "The code ({}) in memory has been successfully remapped.", ReadableSize(size));
+    //     }
 
-        if (config().getBool("mlock_executable", false))
-        {
-            if (hasLinuxCapability(CAP_IPC_LOCK))
-            {
-                try
-                {
-                    /// Get the memory area with (current) code segment.
-                    /// It's better to lock only the code segment instead of calling "mlockall",
-                    /// because otherwise debug info will be also locked in memory, and it can be huge.
-                    auto [addr, len] = getMappedArea(reinterpret_cast<void *>(mainEntryClickHouseServer));
+    //     if (config().getBool("mlock_executable", false))
+    //     {
+    //         if (hasLinuxCapability(CAP_IPC_LOCK))
+    //         {
+    //             try
+    //             {
+    //                 /// Get the memory area with (current) code segment.
+    //                 /// It's better to lock only the code segment instead of calling "mlockall",
+    //                 /// because otherwise debug info will be also locked in memory, and it can be huge.
+    //                 auto [addr, len] = getMappedArea(reinterpret_cast<void *>(mainEntryClickHouseServer));
 
-                    LOG_TRACE(log, "Will do mlock to prevent executable memory from being paged out. It may take a few seconds.");
-                    if (0 != mlock(addr, len))
-                        LOG_WARNING(log, "Failed mlock: {}", errnoToString());
-                    else
-                        LOG_TRACE(log, "The memory map of clickhouse executable has been mlock'ed, total {}", ReadableSize(len));
-                }
-                catch (...)
-                {
-                    LOG_WARNING(log, "Cannot mlock: {}", getCurrentExceptionMessage(false));
-                }
-            }
-            else
-            {
-                LOG_INFO(log, "It looks like the process has no CAP_IPC_LOCK capability, binary mlock will be disabled."
-                    " It could happen due to incorrect ClickHouse package installation."
-                    " You could resolve the problem manually with 'sudo setcap cap_ipc_lock=+ep {}'."
-                    " Note that it will not work on 'nosuid' mounted filesystems.", executable_path);
-            }
-        }
-    }
+    //                 LOG_TRACE(log, "Will do mlock to prevent executable memory from being paged out. It may take a few seconds.");
+    //                 if (0 != mlock(addr, len))
+    //                     LOG_WARNING(log, "Failed mlock: {}", errnoToString());
+    //                 else
+    //                     LOG_TRACE(log, "The memory map of clickhouse executable has been mlock'ed, total {}", ReadableSize(len));
+    //             }
+    //             catch (...)
+    //             {
+    //                 LOG_WARNING(log, "Cannot mlock: {}", getCurrentExceptionMessage(false));
+    //             }
+    //         }
+    //         else
+    //         {
+    //             LOG_INFO(log, "It looks like the process has no CAP_IPC_LOCK capability, binary mlock will be disabled."
+    //                 " It could happen due to incorrect ClickHouse package installation."
+    //                 " You could resolve the problem manually with 'sudo setcap cap_ipc_lock=+ep {}'."
+    //                 " Note that it will not work on 'nosuid' mounted filesystems.", executable_path);
+    //         }
+    //     }
+    // }
 
     FailPointInjection::enableFromGlobalConfig(config());
 
